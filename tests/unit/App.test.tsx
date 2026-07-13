@@ -180,8 +180,8 @@ function installApi(initialState: ConnectionViewState): AssistantApi {
   const api: AssistantApi = {
     getAppInfo: vi.fn().mockResolvedValue({
       name: 'Power BI 智能助手',
-      version: '0.2.0',
-      stage: 1
+      version: '0.3.0',
+      stage: 2
     }),
     listModels: vi.fn().mockResolvedValue(apiSuccess(initialState)),
     connectModel: vi.fn().mockResolvedValue(apiSuccess(connectedState)),
@@ -198,7 +198,17 @@ function installApi(initialState: ConnectionViewState): AssistantApi {
     onConnectionStateChanged: vi.fn((listener: (state: ConnectionViewState) => void) => {
       stateListener = listener
       return vi.fn()
-    })
+    }),
+    listProviderProfiles: vi.fn().mockResolvedValue({
+      ok: true,
+      data: { revision: 0, profiles: [] }
+    }),
+    startProviderTest: vi.fn(),
+    cancelProviderTest: vi.fn(),
+    saveTestedProvider: vi.fn(),
+    deleteProvider: vi.fn(),
+    activateProvider: vi.fn(),
+    onProviderTestEvent: vi.fn(() => vi.fn())
   }
   window.powerBiAssistant = api
   return api
@@ -219,7 +229,7 @@ describe('App 阶段 1 连接与模型浏览', () => {
 
     expect(await screen.findByRole('heading', { name: '先打开一个 Power BI 模型' })).toBeInTheDocument()
     expect(screen.getByText('打开 .pbix 文件')).toBeInTheDocument()
-    expect(screen.getByText('版本 0.2.0')).toBeInTheDocument()
+    expect(screen.getByText('版本 0.3.0')).toBeInTheDocument()
     expect(api.listModels).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: /重新扫描/ }))
@@ -243,13 +253,15 @@ describe('App 阶段 1 连接与模型浏览', () => {
         candidateId: '22222222-2222-4222-8222-222222222222'
       })
     )
-    expect(await screen.findByRole('heading', { name: '模型架构' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '选择要使用的功能' })).toBeInTheDocument()
   })
 
   it('连接后可搜索真实对象、查看只读 DAX 和关系', async () => {
     installApi(connectedState)
     render(<App />)
 
+    expect(await screen.findByRole('heading', { name: '选择要使用的功能' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '模型架构' }))
     expect(await screen.findByRole('heading', { name: '模型架构' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '总销售额' }))
     expect(screen.getByText("SUM('销售事实'[销售额])")).toBeInTheDocument()
@@ -273,6 +285,8 @@ describe('App 阶段 1 连接与模型浏览', () => {
     installApi(connectedState)
     render(<App />)
 
+    await screen.findByRole('heading', { name: '选择要使用的功能' })
+    fireEvent.click(screen.getByRole('button', { name: '模型架构' }))
     expect(await screen.findByRole('heading', { name: '模型架构' })).toBeInTheDocument()
     expect(screen.getByText('销售事实')).toBeInTheDocument()
 
@@ -291,5 +305,38 @@ describe('App 阶段 1 连接与模型浏览', () => {
     expect(screen.queryByText('销售事实')).not.toBeInTheDocument()
     expect(screen.getByText('已连接的 Power BI Desktop 模型已关闭。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /重新连接/ })).toBeInTheDocument()
+  })
+
+  it('阶段 2 首页固定显示五个功能，点击只展示边界且不调用 Provider', async () => {
+    const api = installApi(connectedState)
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: '选择要使用的功能' })).toBeInTheDocument()
+    const featureNames = [
+      '生成度量值',
+      '生成计算列',
+      '生成计算表',
+      '诊断现有度量值',
+      '评估当前模型'
+    ]
+    for (const name of featureNames) {
+      expect(screen.getByRole('button', { name: new RegExp(name) })).toBeInTheDocument()
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: /诊断现有度量值/ }))
+    expect(screen.getByText(/绕过业务需求完整性确认流程/)).toBeInTheDocument()
+    expect(api.startProviderTest).not.toHaveBeenCalled()
+    expect(api.saveTestedProvider).not.toHaveBeenCalled()
+    expect(api.getModelSnapshot).toHaveBeenCalledTimes(1)
+  })
+
+  it('未连接 Power BI 时仍可打开 Provider 设置', async () => {
+    const api = installApi(noModelsState)
+    render(<App />)
+    await screen.findByRole('heading', { name: '先打开一个 Power BI 模型' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Provider 设置' }))
+    expect(await screen.findByRole('dialog', { name: 'Provider 设置' })).toBeInTheDocument()
+    await waitFor(() => expect(api.listProviderProfiles).toHaveBeenCalledOnce())
   })
 })

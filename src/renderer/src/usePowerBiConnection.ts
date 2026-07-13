@@ -10,7 +10,7 @@ import type { ApiError, ApiResult } from '../../shared/result-contract'
 const initialAppInfo: AppInfo = {
   name: 'Power BI 智能助手',
   version: '读取中',
-  stage: 1
+  stage: 2
 }
 
 const initialConnectionState: ConnectionViewState = {

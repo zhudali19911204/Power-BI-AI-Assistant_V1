@@ -1,5 +1,6 @@
 export type ConnectionErrorCode =
   | 'INVALID_INPUT'
+  | 'FORBIDDEN_IPC_SENDER'
   | 'MCP_BINARY_NOT_FOUND'
   | 'MCP_START_FAILED'
   | 'MCP_CONTRACT_MISMATCH'

@@ -1,6 +1,6 @@
 {
   "name": "power-bi-ai-assistant",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "面向 Power BI Desktop 的 Windows 本地智能助手",
   "main": "out/main/index.js",

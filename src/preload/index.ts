@@ -18,6 +18,23 @@ import {
 } from '../shared/app-contract'
 import type { ModelSnapshot } from '../shared/model-contract'
 import type { ApiResult } from '../shared/result-contract'
+import {
+  PROVIDER_ACTIVATE_CHANNEL,
+  PROVIDER_DELETE_CHANNEL,
+  PROVIDER_LIST_CHANNEL,
+  PROVIDER_SAVE_CHANNEL,
+  PROVIDER_TEST_CANCEL_CHANNEL,
+  PROVIDER_TEST_EVENT_CHANNEL,
+  PROVIDER_TEST_START_CHANNEL,
+  type ProviderProfileInput,
+  type ProviderProfilesState,
+  type ProviderResult,
+  type ProviderSaveInput,
+  type ProviderTestCancelInput,
+  type ProviderTestDraft,
+  type ProviderTestEvent,
+  type ProviderTestStarted
+} from '../shared/provider-contract'
 
 const assistantApi: AssistantApi = Object.freeze({
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(APP_INFO_CHANNEL) as Promise<AppInfo>,
@@ -43,6 +60,45 @@ const assistantApi: AssistantApi = Object.freeze({
     }
     ipcRenderer.on(CONNECTION_STATE_CHANGED_CHANNEL, handler)
     return () => ipcRenderer.removeListener(CONNECTION_STATE_CHANGED_CHANNEL, handler)
+  },
+  listProviderProfiles: (): Promise<ProviderResult<ProviderProfilesState>> =>
+    ipcRenderer.invoke(PROVIDER_LIST_CHANNEL) as Promise<ProviderResult<ProviderProfilesState>>,
+  startProviderTest: (
+    input: ProviderTestDraft
+  ): Promise<ProviderResult<ProviderTestStarted>> =>
+    ipcRenderer.invoke(PROVIDER_TEST_START_CHANNEL, input) as Promise<
+      ProviderResult<ProviderTestStarted>
+    >,
+  cancelProviderTest: (
+    input: ProviderTestCancelInput
+  ): Promise<ProviderResult<{ readonly cancelled: boolean }>> =>
+    ipcRenderer.invoke(PROVIDER_TEST_CANCEL_CHANNEL, input) as Promise<
+      ProviderResult<{ readonly cancelled: boolean }>
+    >,
+  saveTestedProvider: (
+    input: ProviderSaveInput
+  ): Promise<ProviderResult<ProviderProfilesState>> =>
+    ipcRenderer.invoke(PROVIDER_SAVE_CHANNEL, input) as Promise<
+      ProviderResult<ProviderProfilesState>
+    >,
+  deleteProvider: (
+    input: ProviderProfileInput
+  ): Promise<ProviderResult<ProviderProfilesState>> =>
+    ipcRenderer.invoke(PROVIDER_DELETE_CHANNEL, input) as Promise<
+      ProviderResult<ProviderProfilesState>
+    >,
+  activateProvider: (
+    input: ProviderProfileInput
+  ): Promise<ProviderResult<ProviderProfilesState>> =>
+    ipcRenderer.invoke(PROVIDER_ACTIVATE_CHANNEL, input) as Promise<
+      ProviderResult<ProviderProfilesState>
+    >,
+  onProviderTestEvent: (listener: (event: ProviderTestEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, event: ProviderTestEvent): void => {
+      listener(event)
+    }
+    ipcRenderer.on(PROVIDER_TEST_EVENT_CHANNEL, handler)
+    return () => ipcRenderer.removeListener(PROVIDER_TEST_EVENT_CHANNEL, handler)
   }
 })
 

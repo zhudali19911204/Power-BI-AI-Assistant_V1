@@ -6,7 +6,7 @@ describe('createAppInfo', () => {
     expect(createAppInfo('0.2.0')).toEqual({
       name: 'Power BI 智能助手',
       version: '0.2.0',
-      stage: 1
+      stage: 2
     })
   })
 })

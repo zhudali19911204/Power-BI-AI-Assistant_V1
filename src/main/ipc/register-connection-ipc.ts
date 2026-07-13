@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { z } from 'zod'
 import {
   CONNECTION_CONNECT_CHANNEL,
@@ -15,6 +15,11 @@ import {
   PowerBiConnectionService,
   toApiError
 } from '../powerbi/connection-service'
+import {
+  assertTrustedMainFrameSender,
+  IpcSenderRejectedError,
+  type MainWindowProvider
+} from './ipc-sender-policy'
 
 const connectInputSchema = z
   .object({ candidateId: z.string().uuid().max(64) })
@@ -27,8 +32,26 @@ async function safeCall<T>(operation: () => Promise<T> | T): Promise<ApiResult<T
   try {
     return apiSuccess(await operation())
   } catch (error) {
+    if (error instanceof IpcSenderRejectedError) {
+      return apiFailure({
+        code: error.code,
+        message: error.message,
+        retryable: false
+      })
+    }
     return apiFailure(toApiError(error))
   }
+}
+
+function trustedCall<T>(
+  event: IpcMainInvokeEvent,
+  getMainWindow: MainWindowProvider,
+  operation: () => Promise<T> | T
+): Promise<ApiResult<T>> {
+  return safeCall(() => {
+    assertTrustedMainFrameSender(event, getMainWindow)
+    return operation()
+  })
 }
 
 function parseInput<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -39,23 +62,41 @@ function parseInput<T>(schema: z.ZodType<T>, value: unknown): T {
   return result.data
 }
 
-export function registerConnectionIpc(service: PowerBiConnectionService): () => void {
-  ipcMain.handle(CONNECTION_LIST_CHANNEL, () => safeCall(() => service.discover()))
-  ipcMain.handle(CONNECTION_CONNECT_CHANNEL, (_event, value: unknown) =>
-    safeCall(() => service.connectModel(parseInput(connectInputSchema, value).candidateId))
+export function registerConnectionIpc(
+  service: PowerBiConnectionService,
+  getMainWindow: MainWindowProvider
+): () => void {
+  ipcMain.handle(CONNECTION_LIST_CHANNEL, (event) =>
+    trustedCall(event, getMainWindow, () => service.discover())
   )
-  ipcMain.handle(CONNECTION_DISCONNECT_CHANNEL, () => safeCall(() => service.disconnect()))
-  ipcMain.handle(CONNECTION_RECONNECT_CHANNEL, () => safeCall(() => service.reconnect()))
-  ipcMain.handle(CONNECTION_STATE_CHANNEL, () => safeCall(() => service.getState()))
-  ipcMain.handle(SCHEMA_SNAPSHOT_CHANNEL, (_event, value: unknown) =>
-    safeCall(() => service.getSnapshot(parseInput(snapshotInputSchema, value).connectionId))
+  ipcMain.handle(CONNECTION_CONNECT_CHANNEL, (event, value: unknown) =>
+    trustedCall(event, getMainWindow, () =>
+      service.connectModel(parseInput(connectInputSchema, value).candidateId)
+    )
+  )
+  ipcMain.handle(CONNECTION_DISCONNECT_CHANNEL, (event) =>
+    trustedCall(event, getMainWindow, () => service.disconnect())
+  )
+  ipcMain.handle(CONNECTION_RECONNECT_CHANNEL, (event) =>
+    trustedCall(event, getMainWindow, () => service.reconnect())
+  )
+  ipcMain.handle(CONNECTION_STATE_CHANNEL, (event) =>
+    trustedCall(event, getMainWindow, () => service.getState())
+  )
+  ipcMain.handle(SCHEMA_SNAPSHOT_CHANNEL, (event, value: unknown) =>
+    trustedCall(event, getMainWindow, () =>
+      service.getSnapshot(parseInput(snapshotInputSchema, value).connectionId)
+    )
   )
 
   const unsubscribe = service.subscribe((state) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
-        window.webContents.send(CONNECTION_STATE_CHANGED_CHANNEL, state)
-      }
+    const mainWindow = getMainWindow()
+    if (
+      mainWindow &&
+      !mainWindow.isDestroyed() &&
+      !mainWindow.webContents.isDestroyed()
+    ) {
+      mainWindow.webContents.send(CONNECTION_STATE_CHANGED_CHANNEL, state)
     }
   })
 

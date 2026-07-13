@@ -4,8 +4,7 @@ import type { PowerBiConnectionService } from '../../src/main/powerbi/connection
 
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
-  removeHandler: vi.fn(),
-  getAllWindows: vi.fn()
+  removeHandler: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -17,9 +16,6 @@ vi.mock('electron', () => ({
       electron.removeHandler(channel)
       electron.handlers.delete(channel)
     }
-  },
-  BrowserWindow: {
-    getAllWindows: electron.getAllWindows
   }
 }))
 
@@ -41,6 +37,28 @@ const state: ConnectionViewState = {
   disconnectReason: null,
   error: null,
   updatedAt: '2026-07-13T08:00:00.000Z'
+}
+
+function createMainWindow(send = vi.fn()): {
+  readonly window: Electron.BrowserWindow
+  readonly event: Electron.IpcMainInvokeEvent
+  readonly send: ReturnType<typeof vi.fn>
+} {
+  const mainFrame = {}
+  const webContents = {
+    mainFrame,
+    isDestroyed: () => false,
+    send
+  }
+  const window = {
+    isDestroyed: () => false,
+    webContents
+  } as unknown as Electron.BrowserWindow
+  const event = {
+    sender: webContents,
+    senderFrame: mainFrame
+  } as unknown as Electron.IpcMainInvokeEvent
+  return { window, event, send }
 }
 
 function createService(): {
@@ -83,12 +101,12 @@ describe('connection IPC security boundary', () => {
   beforeEach(() => {
     electron.handlers.clear()
     electron.removeHandler.mockClear()
-    electron.getAllWindows.mockReset().mockReturnValue([])
   })
 
   it('registers only the explicit phase 1 channels and unregisters all of them', () => {
     const fake = createService()
-    const unregister = registerConnectionIpc(fake.service)
+    const main = createMainWindow()
+    const unregister = registerConnectionIpc(fake.service, () => main.window)
 
     expect([...electron.handlers.keys()].sort()).toEqual(
       [
@@ -110,18 +128,22 @@ describe('connection IPC security boundary', () => {
 
   it('rejects malformed UUIDs and extra fields before calling the service', async () => {
     const fake = createService()
-    registerConnectionIpc(fake.service)
+    const main = createMainWindow()
+    registerConnectionIpc(fake.service, () => main.window)
     const connect = electron.handlers.get(CONNECTION_CONNECT_CHANNEL)
     const snapshot = electron.handlers.get(SCHEMA_SNAPSHOT_CHANNEL)
 
-    await expect(connect?.({}, { candidateId: 'not-a-uuid' })).resolves.toMatchObject({
+    await expect(connect?.(main.event, { candidateId: 'not-a-uuid' })).resolves.toMatchObject({
       ok: false,
       error: { code: 'INVALID_INPUT' }
     })
     await expect(
-      connect?.({}, { candidateId: 'bd62de59-5baf-4ddd-b899-47ad7a1191a4', operation: 'Create' })
+      connect?.(main.event, {
+        candidateId: 'bd62de59-5baf-4ddd-b899-47ad7a1191a4',
+        operation: 'Create'
+      })
     ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } })
-    await expect(snapshot?.({}, { connectionId: 42 })).resolves.toMatchObject({
+    await expect(snapshot?.(main.event, { connectionId: 42 })).resolves.toMatchObject({
       ok: false,
       error: { code: 'INVALID_INPUT' }
     })
@@ -132,17 +154,18 @@ describe('connection IPC security boundary', () => {
   it('passes only validated opaque identifiers and sanitizes unexpected errors', async () => {
     const fake = createService()
     fake.discover.mockRejectedValueOnce(new Error('C:\\Users\\name\\secret.pbix'))
-    registerConnectionIpc(fake.service)
+    const main = createMainWindow()
+    registerConnectionIpc(fake.service, () => main.window)
     const candidateId = 'bd62de59-5baf-4ddd-b899-47ad7a1191a4'
     const connectionId = '106fa1cb-6d52-43c0-8774-3ba58a10a32c'
 
     await expect(
-      electron.handlers.get(CONNECTION_CONNECT_CHANNEL)?.({}, { candidateId })
+      electron.handlers.get(CONNECTION_CONNECT_CHANNEL)?.(main.event, { candidateId })
     ).resolves.toMatchObject({ ok: true })
     await expect(
-      electron.handlers.get(SCHEMA_SNAPSHOT_CHANNEL)?.({}, { connectionId })
+      electron.handlers.get(SCHEMA_SNAPSHOT_CHANNEL)?.(main.event, { connectionId })
     ).resolves.toMatchObject({ ok: true, data: null })
-    await expect(electron.handlers.get(CONNECTION_LIST_CHANNEL)?.({})).resolves.toEqual({
+    await expect(electron.handlers.get(CONNECTION_LIST_CHANNEL)?.(main.event)).resolves.toEqual({
       ok: false,
       error: {
         code: 'INTERNAL_ERROR',
@@ -155,19 +178,44 @@ describe('connection IPC security boundary', () => {
     expect(fake.getSnapshot).toHaveBeenCalledWith(connectionId)
   })
 
-  it('pushes state only to live windows and never forwards an Electron event object', () => {
-    const send = vi.fn()
-    const destroyedSend = vi.fn()
-    electron.getAllWindows.mockReturnValue([
-      { isDestroyed: () => false, webContents: { send } },
-      { isDestroyed: () => true, webContents: { send: destroyedSend } }
-    ])
+  it('rejects other windows and subframes before calling a service', async () => {
     const fake = createService()
-    registerConnectionIpc(fake.service)
+    const main = createMainWindow()
+    registerConnectionIpc(fake.service, () => main.window)
+
+    await expect(
+      electron.handlers.get(CONNECTION_LIST_CHANNEL)?.({
+        sender: main.event.sender,
+        senderFrame: {}
+      })
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN_IPC_SENDER',
+        message: 'IPC 请求来源无效。',
+        retryable: false
+      }
+    })
+    await expect(
+      electron.handlers.get(CONNECTION_LIST_CHANNEL)?.({
+        sender: {},
+        senderFrame: main.event.senderFrame
+      })
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'FORBIDDEN_IPC_SENDER' }
+    })
+    expect(fake.discover).not.toHaveBeenCalled()
+  })
+
+  it('pushes state only to the trusted live main window', () => {
+    const send = vi.fn()
+    const main = createMainWindow(send)
+    const fake = createService()
+    registerConnectionIpc(fake.service, () => main.window)
 
     fake.emit(state)
 
     expect(send).toHaveBeenCalledWith(CONNECTION_STATE_CHANGED_CHANNEL, state)
-    expect(destroyedSend).not.toHaveBeenCalled()
   })
 })

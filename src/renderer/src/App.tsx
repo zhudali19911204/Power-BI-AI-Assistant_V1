@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type {
   ConnectionPhase,
   ConnectionViewState,
@@ -6,7 +6,10 @@ import type {
   DisconnectReason
 } from '../../shared/connection-contract'
 import { SchemaExplorer } from './SchemaExplorer'
+import { FeatureHome } from './FeatureHome'
+import { ProviderSettingsDialog } from './ProviderSettingsDialog'
 import { usePowerBiConnection } from './usePowerBiConnection'
+import './phase2-shell.css'
 
 const phaseLabels: Record<ConnectionPhase, string> = {
   idle: '准备连接',
@@ -182,6 +185,9 @@ function CountBadge({ label, value }: { readonly label: string; readonly value: 
 }
 
 export function App(): React.JSX.Element {
+  const [activeView, setActiveView] = useState<'home' | 'schema'>('home')
+  const [providerSettingsOpen, setProviderSettingsOpen] = useState(false)
+  const providerSettingsButtonRef = useRef<HTMLButtonElement>(null)
   const {
     appInfo,
     connection,
@@ -196,6 +202,10 @@ export function App(): React.JSX.Element {
 
   const active = connection.activeConnection
   const counts = active?.objectCounts
+  const closeProviderSettings = (): void => {
+    setProviderSettingsOpen(false)
+    providerSettingsButtonRef.current?.focus()
+  }
 
   return (
     <main className="app-shell">
@@ -207,7 +217,37 @@ export function App(): React.JSX.Element {
             <h1>{appInfo.name}</h1>
           </div>
         </div>
-        <StatusBadge connection={connection} />
+        <div className="phase2-top-actions">
+          {connection.phase === 'connected' && active && (
+            <nav className="connected-navigation" aria-label="已连接模型页面">
+              <button
+                type="button"
+                aria-current={activeView === 'home' ? 'page' : undefined}
+                onClick={() => setActiveView('home')}
+              >
+                功能首页
+              </button>
+              <button
+                type="button"
+                aria-current={activeView === 'schema' ? 'page' : undefined}
+                onClick={() => setActiveView('schema')}
+              >
+                模型架构
+              </button>
+            </nav>
+          )}
+          <button
+            ref={providerSettingsButtonRef}
+            type="button"
+            className="provider-settings-button"
+            aria-haspopup="dialog"
+            aria-expanded={providerSettingsOpen}
+            onClick={() => setProviderSettingsOpen(true)}
+          >
+            Provider 设置
+          </button>
+          <StatusBadge connection={connection} />
+        </div>
       </header>
 
       {connection.phase === 'connected' && active ? (
@@ -235,19 +275,25 @@ export function App(): React.JSX.Element {
             </div>
           </section>
 
-          {schemaLoading && (
-            <section className="schema-loading" role="status">
-              <div className="small-spinner" aria-hidden="true" />
-              <div><strong>正在加载模型架构</strong><p>读取表、列、度量值和关系…</p></div>
-            </section>
+          {activeView === 'home' ? (
+            <FeatureHome />
+          ) : (
+            <>
+              {schemaLoading && (
+                <section className="schema-loading" role="status">
+                  <div className="small-spinner" aria-hidden="true" />
+                  <div><strong>正在加载模型架构</strong><p>读取表、列、度量值和关系…</p></div>
+                </section>
+              )}
+              {schemaError && (
+                <section className="inline-error" role="alert">
+                  <div><strong>无法显示模型架构</strong><p>{schemaError}</p></div>
+                  <button type="button" className="secondary-button" onClick={() => void reconnect()}>重新连接</button>
+                </section>
+              )}
+              {snapshot && <SchemaExplorer key={snapshot.snapshotId} snapshot={snapshot} />}
+            </>
           )}
-          {schemaError && (
-            <section className="inline-error" role="alert">
-              <div><strong>无法显示模型架构</strong><p>{schemaError}</p></div>
-              <button type="button" className="secondary-button" onClick={() => void reconnect()}>重新连接</button>
-            </section>
-          )}
-          {snapshot && <SchemaExplorer key={snapshot.snapshotId} snapshot={snapshot} />}
         </>
       ) : isBusy(connection.phase) ? (
         <LoadingState phase={connection.phase} />
@@ -263,6 +309,8 @@ export function App(): React.JSX.Element {
       ) : (
         <FailureState connection={connection} onReconnect={() => void reconnect()} />
       )}
+
+      <ProviderSettingsDialog open={providerSettingsOpen} onClose={closeProviderSettings} />
 
       <footer>
         <span>内部测试版</span>
