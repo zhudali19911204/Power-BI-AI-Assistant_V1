@@ -1,0 +1,87 @@
+{
+  "name": "power-bi-ai-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "面向 Power BI Desktop 的 Windows 本地智能助手",
+  "main": "out/main/index.js",
+  "author": "Power BI AI Assistant Team",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.0.0"
+  },
+  "packageManager": "npm@11.13.0",
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "dev": "node scripts/electron-vite.mjs dev",
+    "build": "npm run clean && electron-vite build",
+    "start": "node scripts/electron-vite.mjs preview",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:coverage": "vitest run --coverage --config vitest.unit.config.ts",
+    "quality": "npm run lint && npm run typecheck && npm run test",
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "package:dir": "npm run quality && npm run build && electron-builder --dir",
+    "dist": "npm run quality && npm run build && electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "cn.internal.powerbi.aiassistant",
+    "productName": "Power BI 智能助手",
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "dependencies": {
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@swc/core": "1.15.43",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "26.1.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.4",
+    "@vitest/coverage-v8": "4.1.10",
+    "electron": "43.1.0",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "eslint": "10.7.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.3",
+    "globals": "17.7.0",
+    "jsdom": "29.1.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.63.0",
+    "vite": "7.3.6",
+    "vitest": "4.1.10"
+  }
+}

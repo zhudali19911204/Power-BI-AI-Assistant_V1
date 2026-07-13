@@ -1,0 +1,12 @@
+node_modules/
+.npm-cache/
+out/
+release/
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example
