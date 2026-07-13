@@ -14,15 +14,15 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2022",
-    "types": ["node", "vitest/globals"]
+    "types": ["node", "vite/client", "vitest/globals"]
   },
   "include": [
     "electron.vite.config.ts",
     "vitest.*.config.ts",
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
-    "src/renderer/src/App.tsx",
-    "src/renderer/src/global.d.ts",
+    "src/renderer/src/**/*.ts",
+    "src/renderer/src/**/*.tsx",
     "src/shared/**/*.ts",
     "tests/**/*.ts",
     "tests/**/*.tsx"

@@ -1,9 +1,17 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron'
 import { APP_INFO_CHANNEL, createAppInfo } from '../shared/app-contract'
+import { registerConnectionIpc } from './ipc/register-connection-ipc'
+import { resolvePowerBiMcpBinary } from './mcp/mcp-binary-resolver'
+import { PowerBiMcpClient } from './mcp/powerbi-mcp-client'
+import { PowerBiConnectionService } from './powerbi/connection-service'
+import { MicrosoftPowerBiReadAdapter } from './powerbi/powerbi-read-adapter'
 import { createWindowOptions } from './window'
 
 const isSmokeTest = process.env.PBI_ASSISTANT_SMOKE_TEST === '1'
+let connectionService: PowerBiConnectionService | null = null
+let unregisterConnectionIpc: (() => void) | null = null
+let cleanupStarted = false
 
 function registerIpcHandlers(): void {
   ipcMain.handle(APP_INFO_CHANNEL, () => createAppInfo(app.getVersion()))
@@ -41,6 +49,14 @@ function createMainWindow(): BrowserWindow {
 void app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   registerIpcHandlers()
+  const mcpBinary = resolvePowerBiMcpBinary({
+    appPath: app.getAppPath(),
+    resourcesPath: process.resourcesPath,
+    isPackaged: app.isPackaged
+  })
+  const mcpClient = new PowerBiMcpClient(mcpBinary)
+  connectionService = new PowerBiConnectionService(new MicrosoftPowerBiReadAdapter(mcpClient))
+  unregisterConnectionIpc = registerConnectionIpc(connectionService)
   createMainWindow()
 
   app.on('activate', () => {
@@ -48,6 +64,17 @@ void app.whenReady().then(() => {
       createMainWindow()
     }
   })
+})
+
+app.on('before-quit', (event) => {
+  if (cleanupStarted || !connectionService) return
+  event.preventDefault()
+  cleanupStarted = true
+  unregisterConnectionIpc?.()
+  unregisterConnectionIpc = null
+  const service = connectionService
+  connectionService = null
+  void service.dispose().finally(() => app.quit())
 })
 
 app.on('window-all-closed', () => {

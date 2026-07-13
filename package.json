@@ -1,6 +1,6 @@
 {
   "name": "power-bi-ai-assistant",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "面向 Power BI Desktop 的 Windows 本地智能助手",
   "main": "out/main/index.js",
@@ -21,6 +21,7 @@
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:live-model": "vitest run --environment node tests/manual/live-powerbi-model.manual.test.ts",
     "test:coverage": "vitest run --coverage --config vitest.unit.config.ts",
     "quality": "npm run lint && npm run typecheck && npm run test",
     "smoke": "npm run build && node scripts/smoke.mjs",
@@ -37,7 +38,8 @@
     },
     "files": [
       "out/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/@microsoft/powerbi-modeling-mcp-win32-x64/**"
     ],
     "win": {
       "target": [
@@ -58,8 +60,11 @@
     }
   },
   "dependencies": {
+    "@microsoft/powerbi-modeling-mcp-win32-x64": "0.5.0-beta.11",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
